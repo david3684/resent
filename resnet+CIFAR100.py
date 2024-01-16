@@ -103,82 +103,76 @@ class ResNet50(nn.Module):
         out = self.outconv(out)
         return out
     
-transforms = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761])
-])
+if __name__ =='__main__':
+    transforms = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761])
+    ])
 
-data_dir = "./datasets"
-if not os.path.exists(data_dir):
-    os.makedirs(data_dir)
+    data_dir = "./datasets"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
 
-save_dir = "./checkpoints"
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
-    
-train_data = datasets.CIFAR10(root=data_dir, download=True, train=True, transform=transforms)
-val_data = datasets.CIFAR10(root=data_dir, download=True, train=False, transform=transforms)
-
-train_loader =DataLoader(train_data, batch_size=128, shuffle=True)
-val_loader =DataLoader(val_data, batch_size=128, shuffle=True)
-
-print('Dataset Load Completed')
-
-def process_epoch(model, criterion, loader, optimizer=None, trainmode=True):
-    if trainmode:
-        model.train()
-    else:
-        model.eval()
-    
-    closs = 0
-    correct = 0
-    total = 0
-    with tqdm(loader, unit='batch') as tepoch:
-        for images, labels in tepoch:
-            if torch.cuda.is_available():
-                #print("Moving to CUDA")
-                images = images.cuda()
-                labels = labels.cuda()
-            if trainmode:
-                optimizer.zero_grad()
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-            else:
-                with torch.no_grad():
-                    outputs = model(images)
-                    loss = criterion(outputs, labels) # average loss from all the samples
-        _, predicted = torch.max(outputs.data, 1) # value, index of second dimension(prob. of classes)
+    save_dir = "./checkpoints"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
         
-        closs   += loss.item() * labels.size(0) # 배치 샘플 수 x 배치의 loss
-        total   += labels.size(0) #배치 크기
-        correct += (predicted == labels).sum().item() # 배치 길이 * boolean 중에 맞는 거 개수 
-        tepoch.set_postfix(loss=closs/total, acc_pct=correct/total*100)
+    train_data = datasets.CIFAR10(root=data_dir, download=True, train=True, transform=transforms)
+    val_data = datasets.CIFAR10(root=data_dir, download=True, train=False, transform=transforms)
 
-    return (closs/total), (correct/total)
-                
-                
-                
-num_classes=10
-model = ResNet50(num_classes)
-if torch.cuda.is_available():
-    model.cuda()
+    train_loader =DataLoader(train_data, batch_size=128, shuffle=True)
+    val_loader =DataLoader(val_data, batch_size=128, shuffle=True)
 
-learning_rate = 0.001
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+    print('Dataset Load Completed')
 
-criterion = nn.CrossEntropyLoss()
-max_epoch = 100
-##Train Model##
-for epoch in range(max_epoch):
-    tloss, tacc = process_epoch(model, criterion, train_loader, optimizer, trainmode=True)
+    def process_epoch(model, criterion, loader, optimizer=None, trainmode=True):
+        if trainmode:
+            model.train()
+        else:
+            model.eval()
+        
+        closs = 0
+        correct = 0
+        total = 0
+        with tqdm(loader, unit='batch') as tepoch:
+            for images, labels in tepoch:
+                if torch.cuda.is_available():
+                    #print("Moving to CUDA")
+                    images = images.cuda()
+                    labels = labels.cuda()
+                if trainmode:
+                    optimizer.zero_grad()
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+                    loss.backward()
+                    optimizer.step()
+                else:
+                    with torch.no_grad():
+                        outputs = model(images)
+                        loss = criterion(outputs, labels) # average loss from all the samples
+            _, predicted = torch.max(outputs.data, 1) # value, index of second dimension(prob. of classes)
+            
+            closs   += loss.item() * labels.size(0) # 배치 샘플 수 x 배치의 loss
+            total   += labels.size(0) #배치 크기
+            correct += (predicted == labels).sum().item() # 배치 길이 * boolean 중에 맞는 거 개수 
+            tepoch.set_postfix(loss=closs/total, acc_pct=correct/total*100)
+
+        return (closs/total), (correct/total)
+                    
+                    
+                    
+    num_classes=10
+    model = ResNet50(num_classes)
+    if torch.cuda.is_available():
+        model.cuda()
+
+    learning_rate = 0.001
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+
+    criterion = nn.CrossEntropyLoss()
     vloss, vacc = process_epoch(model, criterion, val_loader, optimizer, trainmode=False)
     print('Epoch {:d} completed. Train loss {:.3f} Val loss {:.3f} Train accuracy {:.1f}% Test accuracy {:.1f}%'.format(epoch,tloss,vloss,tacc*100,vacc*100))
-    scheduler.step()
-    if(epoch+1)%5 == 0:
-        save_path = os.path.join(save_dir,f'resnet50_epoch_{epoch+1}.pth')
-        torch.save(model.state_dict(), save_path)
-        print(f'Model saved at {save_path}')
+        
+    max_epoch = 100
 
